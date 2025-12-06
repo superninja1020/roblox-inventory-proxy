@@ -11,11 +11,11 @@ app.use(express.json());
 const COOKIE = process.env.ROBLOSECURITY;
 
 if (!COOKIE) {
-    console.log("⚠️ No ROBLOSECURITY cookie found! Offsale details will not load.");
+    console.log("⚠️ No ROBLOSECURITY cookie found! Limited/off-sale details may not load.");
 }
 
 // ---------------------------
-// GET USER COLLECTIBLES (LIMITEDS)
+// GET USER COLLECTIBLES (LIMITEDS) — used by your RAP leaderboard
 // ---------------------------
 app.get("/inventory/:userId", async (req, res) => {
     try {
@@ -48,27 +48,21 @@ app.get("/inventory/:userId", async (req, res) => {
     }
 });
 
-// -----------------------------------------
-// CURRENTLY WEARING (FULLY FIXED VERSION)
-// -----------------------------------------
-app.get("/fullinventory/:userId", async (req, res) => {
+// ---------------------------
+// CURRENTLY WEARING — this is what your Lua script actually uses
+// ---------------------------
+app.get("/wearing/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
 
         const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
 
-        console.log("Using cookie:", COOKIE ? "YES" : "NO");
-        console.log("Cookie length:", COOKIE ? COOKIE.length : "NONE");
-
         const response = await fetch(url, {
             method: "GET",
             headers: {
-                "Cookie": `.ROBLOSECURITY=${COOKIE}`,   // ← ★ THIS IS WHERE THE COOKIE GOES
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                "Accept": "application/json",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Referer": "https://www.roblox.com/",
-                "Origin": "https://www.roblox.com"
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`,
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json"
             }
         });
 
@@ -77,15 +71,14 @@ app.get("/fullinventory/:userId", async (req, res) => {
         }
 
         const data = await response.json();
-
-        // Roblox returns: { assets: [ ... ] }
         const wearing = data.assets || [];
 
+        // Format for ROBLOX server script
         const formatted = wearing.map(asset => ({
             id: asset.id,
             name: asset.name,
-            image: asset.thumbnailUrl,
-            isLimited: false
+            thumbnailUrl: asset.thumbnailUrl || null,
+            isLimited: asset.isLimited || asset.isLimitedUnique || false
         }));
 
         return res.json({
@@ -99,40 +92,14 @@ app.get("/fullinventory/:userId", async (req, res) => {
 });
 
 // ---------------------------
-// CURRENTLY WEARING (safe for game servers)
-// ---------------------------
-app.get("/wearing/:userId", async (req, res) => {
-    try {
-        const userId = req.params.userId;
-
-        const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
-        
-        const response = await fetch(url, {
-            method: "GET",
-            headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
-        });
-
-        if (!response.ok) {
-            return res.json({ success: false, error: response.status });
-        }
-
-        const data = await response.json();
-        return res.json({ success: true, wearing: data.assets || [] });
-
-    } catch (err) {
-        res.json({ success: false, error: err.toString() });
-    }
-});
-
-// ---------------------------
-// ASSET DETAILS (for offsale detection)
+// ASSET DETAILS — used by Roblox script to get names/images for offsale items
 // ---------------------------
 app.get("/details/:assetId", async (req, res) => {
     try {
         const assetId = req.params.assetId;
 
         const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
-        
+
         const response = await fetch(url, {
             method: "GET",
             headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
@@ -154,7 +121,9 @@ app.get("/details/:assetId", async (req, res) => {
     }
 });
 
+// ---------------------------
 // Test route
+// ---------------------------
 app.get("/", (req, res) => {
     res.send("Roblox Inventory Proxy Running");
 });
