@@ -48,14 +48,14 @@ app.get("/inventory/:userId", async (req, res) => {
     }
 });
 
-// ---------------------------
-// FULL INVENTORY (ALL ITEMS)
-// ---------------------------
+// -----------------------------------------
+// CURRENTLY WEARING (ALL OUTFIT ITEMS)
+// -----------------------------------------
 app.get("/fullinventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
 
-        const url = `https://inventory.roblox.com/v1/users/${userId}/inventory?limit=100`;
+        const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
 
         const response = await fetch(url, {
             method: "GET",
@@ -66,11 +66,19 @@ app.get("/fullinventory/:userId", async (req, res) => {
             return res.json({ success: false, error: response.status });
         }
 
-        const json = await response.json();
+        const data = await response.json();
+
+        // Convert Roblox avatar response into a clean, consistent format
+        const items = (data.assets || []).map(asset => ({
+            id: asset.id,
+            name: asset.name || "Unknown",
+            image: asset.thumbnailUrl || "",
+            rap: 0 // Offsale items have no RAP
+        }));
 
         return res.json({
             success: true,
-            items: json.data || []
+            wearing: items
         });
 
     } catch (err) {
