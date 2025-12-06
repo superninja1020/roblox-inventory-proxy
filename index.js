@@ -5,34 +5,28 @@ require("dotenv").config();
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
+// Load cookie
 const COOKIE = process.env.ROBLOSECURITY;
 
-// Warn if cookie missing
 if (!COOKIE) {
-    console.log("⚠️ WARNING: Missing .ROBLOSECURITY in environment!");
+    console.log("⚠️ No ROBLOSECURITY cookie found! Offsale details will not load.");
 }
 
-// Helper fetch wrapper
-async function robloxFetch(url) {
-    return await fetch(url, {
-        method: "GET",
-        headers: {
-            "Cookie": `.ROBLOSECURITY=${COOKIE}`,
-            "User-Agent": "RobloxProxy/1.0"
-        }
-    });
-}
-
-// =========================================================
-// 1. LIMITEDS (Collectibles)
-// =========================================================
+// ---------------------------
+// GET USER COLLECTIBLES (LIMITEDS)
+// ---------------------------
 app.get("/inventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
+
         const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
 
-        const response = await robloxFetch(url);
+        const response = await fetch(url, {
+            method: "GET",
+            headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
+        });
 
         if (!response.ok) {
             return res.json({ success: false, error: response.status });
@@ -54,41 +48,19 @@ app.get("/inventory/:userId", async (req, res) => {
     }
 });
 
-// =========================================================
-// 2. FULL INVENTORY (ALL ITEMS INCLUDING OFFSALE)
-// =========================================================
+// ---------------------------
+// FULL INVENTORY (ALL ITEMS)
+// ---------------------------
 app.get("/fullinventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
+
         const url = `https://inventory.roblox.com/v1/users/${userId}/inventory?limit=100`;
 
-        const response = await robloxFetch(url);
-
-        if (!response.ok) {
-            return res.json({ success: false, error: response.status });
-        }
-
-        const data = await response.json();
-
-        return res.json({
-            success: true,
-            items: data.data || []
+        const response = await fetch(url, {
+            method: "GET",
+            headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
         });
-
-    } catch (err) {
-        return res.json({ success: false, error: err.toString() });
-    }
-});
-
-// =========================================================
-// 3. UNIVERSAL CATALOG DETAILS (Fixes Unknown Offsale Items)
-// =========================================================
-app.get("/catalog/:assetId", async (req, res) => {
-    try {
-        const assetId = req.params.assetId;
-        const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
-
-        const response = await robloxFetch(url);
 
         if (!response.ok) {
             return res.json({ success: false, error: response.status });
@@ -96,18 +68,9 @@ app.get("/catalog/:assetId", async (req, res) => {
 
         const json = await response.json();
 
-        // Convert to the format your Roblox RAP script uses
         return res.json({
             success: true,
-            data: {
-                id: json.AssetId,
-                name: json.Name,
-                collectible: json.IsLimited,
-                limited: json.IsLimited,
-                limitedUnique: json.IsLimitedUnique,
-                recentAveragePrice: json.RecentAveragePrice || 0,
-                thumbnailImageUrl: json.ThumbnailUrl || ""
-            }
+            items: json.data || []
         });
 
     } catch (err) {
@@ -115,15 +78,43 @@ app.get("/catalog/:assetId", async (req, res) => {
     }
 });
 
-// =========================================================
-// TEST ROUTE
-// =========================================================
-app.get("/", (req, res) => {
-    res.send("Roblox Inventory Proxy Running ✔");
+// ---------------------------
+// ASSET DETAILS (for offsale detection)
+// ---------------------------
+app.get("/details/:assetId", async (req, res) => {
+    try {
+        const assetId = req.params.assetId;
+
+        const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
+        
+        const response = await fetch(url, {
+            method: "GET",
+            headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
+        });
+
+        if (!response.ok) {
+            return res.json({ success: false, error: response.status });
+        }
+
+        const details = await response.json();
+
+        return res.json({
+            success: true,
+            details
+        });
+
+    } catch (err) {
+        return res.json({ success: false, error: err.toString() });
+    }
 });
 
-// =========================================================
-// START SERVER
-// =========================================================
+// Test route
+app.get("/", (req, res) => {
+    res.send("Roblox Inventory Proxy Running");
+});
+
+// Listener
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Proxy running on port ${PORT}`);
+});
