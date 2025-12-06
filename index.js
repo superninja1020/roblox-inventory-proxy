@@ -98,6 +98,31 @@ app.get("/fullinventory/:userId", async (req, res) => {
     }
 });
 
+// ---------------------------
+// CURRENTLY WEARING (safe for game servers)
+// ---------------------------
+app.get("/wearing/:userId", async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
+        
+        const response = await fetch(url, {
+            method: "GET",
+            headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
+        });
+
+        if (!response.ok) {
+            return res.json({ success: false, error: response.status });
+        }
+
+        const data = await response.json();
+        return res.json({ success: true, wearing: data.assets || [] });
+
+    } catch (err) {
+        res.json({ success: false, error: err.toString() });
+    }
+});
 
 // ---------------------------
 // ASSET DETAILS (for offsale detection)
