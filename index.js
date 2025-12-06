@@ -48,19 +48,22 @@ app.get("/inventory/:userId", async (req, res) => {
     }
 });
 
-// --------------------------------------------------
-// CURRENTLY WEARING (fixed: full browser headers)
-// --------------------------------------------------
+// -----------------------------------------
+// CURRENTLY WEARING (FULLY FIXED VERSION)
+// -----------------------------------------
 app.get("/fullinventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
 
         const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
 
+        console.log("Using cookie:", COOKIE ? "YES" : "NO");
+        console.log("Cookie length:", COOKIE ? COOKIE.length : "NONE");
+
         const response = await fetch(url, {
             method: "GET",
             headers: {
-                "Cookie": `.ROBLOSECURITY=${COOKIE}`,
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`,   // ← ★ THIS IS WHERE THE COOKIE GOES
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "Accept": "application/json",
                 "Accept-Language": "en-US,en;q=0.9",
@@ -73,8 +76,10 @@ app.get("/fullinventory/:userId", async (req, res) => {
             return res.json({ success: false, error: response.status });
         }
 
-        const json = await response.json();
-        const wearing = json.assets || [];
+        const data = await response.json();
+
+        // Roblox returns: { assets: [ ... ] }
+        const wearing = data.assets || [];
 
         const formatted = wearing.map(asset => ({
             id: asset.id,
@@ -92,6 +97,7 @@ app.get("/fullinventory/:userId", async (req, res) => {
         return res.json({ success: false, error: err.toString() });
     }
 });
+
 
 // ---------------------------
 // ASSET DETAILS (for offsale detection)
