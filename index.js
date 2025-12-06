@@ -100,3 +100,37 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Proxy running on port " + PORT);
 });
+
+// FULL INVENTORY (returns ALL items, not just limiteds)
+app.get("/fullinventory/:userId", async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const limit = 100;
+
+        const url = `https://inventory.roblox.com/v1/users/${userId}/inventory?limit=${limit}`;
+
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Cookie": `.ROBLOSECURITY=${process.env.ROBLOSECURITY}`
+            }
+        });
+
+        // If inventory is private or another API error
+        if (!response.ok) {
+            return res.json({ success: false, error: response.status });
+        }
+
+        const body = await response.json();
+
+        // Roblox returns { data: [...] }
+        return res.json({
+            success: true,
+            items: body.data || []
+        });
+
+    } catch (err) {
+        return res.json({ success: false, error: err.toString() });
+    }
+});
+
