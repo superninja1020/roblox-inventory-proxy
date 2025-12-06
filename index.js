@@ -84,7 +84,7 @@ app.get("/fullinventory/:userId", async (req, res) => {
 });
 
 // ---------------------------
-// ASSET DETAILS (for offsale detection)
+// ASSET DETAILS (Economy API)
 // ---------------------------
 app.get("/details/:assetId", async (req, res) => {
     try {
@@ -115,6 +115,46 @@ app.get("/details/:assetId", async (req, res) => {
     }
 });
 
+// ===================================================================
+// NEW ENDPOINT (REQUIRED) — CATALOG DETAILS
+// Roblox cannot POST to catalog.roblox.com directly, so we do it here.
+// ===================================================================
+app.get("/catalog/:assetId", async (req, res) => {
+    try {
+        const assetId = Number(req.params.assetId);
+
+        const response = await fetch(
+            "https://catalog.roblox.com/v1/catalog/items/details",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Cookie": `.ROBLOSECURITY=${COOKIE}`
+                },
+                body: JSON.stringify({
+                    items: [
+                        {
+                            itemType: "Asset",
+                            id: assetId
+                        }
+                    ]
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        return res.json({
+            success: true,
+            data: data.data?.[0] || null
+        });
+
+    } catch (err) {
+        return res.json({ success: false, error: err.toString() });
+    }
+});
+
+// ---------------------------
 app.get("/", (req, res) => {
     res.send("Roblox Inventory Proxy Running");
 });
