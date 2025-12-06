@@ -51,9 +51,9 @@ app.get("/inventory/:userId", async (req, res) => {
     }
 });
 
-// ---------------------------
-// CURRENTLY WEARING — this is what your Lua script actually uses
-// ---------------------------
+// -----------------------------------------
+// FIXED "CURRENTLY WEARING" ENDPOINT (2025)
+// -----------------------------------------
 app.get("/wearing/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
@@ -64,8 +64,12 @@ app.get("/wearing/:userId", async (req, res) => {
             method: "GET",
             headers: {
                 "Cookie": `.ROBLOSECURITY=${COOKIE}`,
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/json"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "application/json",
+                "Referer": "https://www.roblox.com/",
+                "Origin": "https://www.roblox.com",
+                "X-CSRF-TOKEN": "",
+                "Accept-Language": "en-US,en;q=0.9"
             }
         });
 
@@ -74,14 +78,14 @@ app.get("/wearing/:userId", async (req, res) => {
         }
 
         const data = await response.json();
-        const wearing = data.assets || [];
+        const assets = data.assets || [];
 
-        // Format for ROBLOX server script
-        const formatted = wearing.map(asset => ({
+        // Convert to the format your game expects
+        const formatted = assets.map(asset => ({
             id: asset.id,
-            name: asset.name,
-            thumbnailUrl: asset.thumbnailUrl || null,
-            isLimited: asset.isLimited || asset.isLimitedUnique || false
+            name: asset.name || "Unknown",
+            image: asset.thumbnailUrl || "",
+            isLimited: false
         }));
 
         return res.json({
@@ -90,7 +94,7 @@ app.get("/wearing/:userId", async (req, res) => {
         });
 
     } catch (err) {
-        return res.json({ success: false, error: err.toString() });
+        res.json({ success: false, error: err.toString() });
     }
 });
 
