@@ -49,36 +49,38 @@ app.get("/inventory/:userId", async (req, res) => {
 });
 
 // -----------------------------------------
-// CURRENTLY WEARING (ALL OUTFIT ITEMS)
+// CURRENTLY WEARING (Fix: use v2 + cookie)
 // -----------------------------------------
 app.get("/fullinventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
 
-        const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
+        const url = `https://avatar.roblox.com/v2/users/${userId}/currently-wearing`;
 
         const response = await fetch(url, {
             method: "GET",
-            headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
+            headers: {
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`
+            }
         });
 
         if (!response.ok) {
             return res.json({ success: false, error: response.status });
         }
 
-        const data = await response.json();
+        const json = await response.json();
+        const wearing = json.data || [];
 
-        // Convert Roblox avatar response into a clean, consistent format
-        const items = (data.assets || []).map(asset => ({
-            id: asset.id,
-            name: asset.name || "Unknown",
-            image: asset.thumbnailUrl || "",
-            rap: 0 // Offsale items have no RAP
+        const formatted = wearing.map(asset => ({
+            id: asset.assetId,
+            name: asset.name,
+            image: asset.thumbnailUrl,
+            isLimited: asset.isLimited || false
         }));
 
         return res.json({
             success: true,
-            wearing: items
+            wearing: formatted
         });
 
     } catch (err) {
