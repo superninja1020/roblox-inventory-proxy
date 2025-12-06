@@ -1,132 +1,81 @@
-import express from "express";
-import fetch from "node-fetch";
-import cors from "cors";
+const express = require("express");
+const fetch = require("node-fetch");
+const cors = require("cors");
+require("dotenv").config();
 
 const app = express();
 app.use(cors());
 
 const COOKIE = process.env.ROBLOSECURITY;
 
+// Simple validation to avoid running without cookie
 if (!COOKIE) {
-  console.error("❌ Missing ROBLOSECURITY environment variable!");
+    console.log("⚠️ WARNING: No .ROBLOSECURITY cookie found in environment variables!");
 }
 
-//
-// Reusable Roblox-request function
-//
-async function robloxRequest(url) {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "Cookie": `.ROBLOSECURITY=${COOKIE}`,
-        "User-Agent": "Mozilla/5.0"
-      }
-    });
-
-    const data = await res.json().catch(() => null);
-
-    return {
-      status: res.status,
-      data
-    };
-  } catch (err) {
-    return { status: 500, data: null };
-  }
-}
-
-//
-// 🔥 Endpoint 1: Limited items
-//
+// ---------------------------
+// LIMITEDS (Collectibles)
+// ---------------------------
 app.get("/inventory/:userId", async (req, res) => {
-  const userId = req.params.userId;
-
-  const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?limit=100&sortOrder=Asc`;
-
-  const response = await robloxRequest(url);
-
-  if (!response.data || response.status !== 200) {
-    return res.json({ success: false, error: response.status });
-  }
-
-  const items = [];
-
-  for (const item of response.data.data ?? []) {
-    items.push({
-      id: item.assetId,
-      name: item.name,
-      rap: item.recentAveragePrice || 0,
-      image: `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`
-    });
-  }
-
-  res.json({
-    success: true,
-    items
-  });
-});
-
-
-//
-// 🔥 NEW ENDPOINT 2: GET ASSET DETAILS (OFFSALE DETECTION)
-//
-app.get("/asset/:assetId", async (req, res) => {
-  const assetId = req.params.assetId;
-
-  const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
-
-  const response = await robloxRequest(url);
-
-  if (!response.data) {
-    return res.json({
-      success: false,
-      error: response.status
-    });
-  }
-
-  res.json({
-    success: true,
-    details: response.data
-  });
-});
-
-
-//
-// Health check
-//
-app.get("/", (req, res) => res.send("Proxy OK"));
-app.get("/status", (req, res) => res.json({ ok: true }));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Proxy running on port " + PORT);
-});
-
-// FULL INVENTORY (returns ALL items, not just limiteds)
-app.get("/fullinventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
         const limit = 100;
 
-        const url = `https://inventory.roblox.com/v1/users/${userId}/inventory?limit=${limit}`;
+        const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=${limit}`;
 
         const response = await fetch(url, {
             method: "GET",
             headers: {
-                "Cookie": `.ROBLOSECURITY=${process.env.ROBLOSECURITY}`
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`
             }
         });
 
-        // If inventory is private or another API error
         if (!response.ok) {
             return res.json({ success: false, error: response.status });
         }
 
-        const body = await response.json();
+        const data = await response.json();
 
-        // Roblox returns { data: [...] }
+        // Convert Roblox collectibles format → simple list for your game
+        const items = (data.data || []).map(item => ({
+            id: item.assetId,
+            name: item.name,
+            rap: item.recentAveragePrice || 0,
+            image: `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`
+        }));
+
+        return res.json({ success: true, items });
+
+    } catch (err) {
+        return res.json({ success: false, error: err.toString() });
+    }
+});
+
+// ---------------------------
+// FULL INVENTORY (ALL ITEMS)
+// ---------------------------
+app.get("/fullinventory/:userId", async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const url = `https://inventory.roblox.com/v1/users/${userId}/inventory?limit=100`;
+
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`
+            }
+        });
+
+        if (!response.ok) {
+            return res.json({ success: false, error: response.status });
+        }
+
+        const json = await response.json();
+
         return res.json({
             success: true,
-            items: body.data || []
+            items: json.data || []
         });
 
     } catch (err) {
@@ -134,3 +83,42 @@ app.get("/fullinventory/:userId", async (req, res) => {
     }
 });
 
+// ---------------------------
+// ASSET DETAILS (for offsale detection)
+// ---------------------------
+app.get("/details/:assetId", async (req, res) => {
+    try {
+        const assetId = req.params.assetId;
+
+        const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
+
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`
+            }
+        });
+
+        if (!response.ok) {
+            return res.json({ success: false, error: response.status });
+        }
+
+        const details = await response.json();
+
+        return res.json({
+            success: true,
+            details
+        });
+
+    } catch (err) {
+        return res.json({ success: false, error: err.toString() });
+    }
+});
+
+app.get("/", (req, res) => {
+    res.send("Roblox Inventory Proxy Running");
+});
+
+// Render requires PORT
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
