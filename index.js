@@ -10,6 +10,9 @@ app.use(express.json());
 // Load cookie
 const COOKIE = process.env.ROBLOSECURITY;
 
+console.log("Loaded ROBLOSECURITY:", COOKIE ? "YES" : "NO");
+console.log("Cookie length:", COOKIE ? COOKIE.length : 0);
+
 if (!COOKIE) {
     console.log("⚠️ No ROBLOSECURITY cookie found! Limited/off-sale details may not load.");
 }
