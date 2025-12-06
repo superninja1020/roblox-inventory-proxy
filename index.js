@@ -48,19 +48,24 @@ app.get("/inventory/:userId", async (req, res) => {
     }
 });
 
-// -----------------------------------------
-// CURRENTLY WEARING (Fix: use v2 + cookie)
-// -----------------------------------------
+// --------------------------------------------------
+// CURRENTLY WEARING (fixed: full browser headers)
+// --------------------------------------------------
 app.get("/fullinventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
 
-        const url = `https://avatar.roblox.com/v2/users/${userId}/currently-wearing`;
+        const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
 
         const response = await fetch(url, {
             method: "GET",
             headers: {
-                "Cookie": `.ROBLOSECURITY=${COOKIE}`
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.roblox.com/",
+                "Origin": "https://www.roblox.com"
             }
         });
 
@@ -69,13 +74,13 @@ app.get("/fullinventory/:userId", async (req, res) => {
         }
 
         const json = await response.json();
-        const wearing = json.data || [];
+        const wearing = json.assets || [];
 
         const formatted = wearing.map(asset => ({
-            id: asset.assetId,
+            id: asset.id,
             name: asset.name,
             image: asset.thumbnailUrl,
-            isLimited: asset.isLimited || false
+            isLimited: false
         }));
 
         return res.json({
