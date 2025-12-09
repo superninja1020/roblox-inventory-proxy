@@ -17,13 +17,12 @@ if (!COOKIE) {
     console.log("⚠️ No ROBLOSECURITY cookie found! Limited/off-sale details may not load.");
 }
 
-// ---------------------------
-// GET USER COLLECTIBLES (LIMITEDS) — used by your RAP leaderboard
-// ---------------------------
+/* ============================================================
+   1️⃣ GET USER COLLECTIBLES (LIMITEDS)
+   ============================================================ */
 app.get("/inventory/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
-
         const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
 
         const response = await fetch(url, {
@@ -31,9 +30,7 @@ app.get("/inventory/:userId", async (req, res) => {
             headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
         });
 
-        if (!response.ok) {
-            return res.json({ success: false, error: response.status });
-        }
+        if (!response.ok) return res.json({ success: false, error: response.status });
 
         const data = await response.json();
 
@@ -41,21 +38,23 @@ app.get("/inventory/:userId", async (req, res) => {
             id: item.assetId,
             name: item.name,
             rap: item.recentAveragePrice || 0,
-            image: `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`
+            image: `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`,
         }));
 
-        return res.json({ success: true, items });
+        res.json({ success: true, items });
 
     } catch (err) {
-        return res.json({ success: false, error: err.toString() });
+        res.json({ success: false, error: err.toString() });
     }
 });
 
-app.get("/wearing/:userId", async (req, res) => {
+/* ============================================================
+   2️⃣ FULL AVATAR ENDPOINT (ACCESSORIES + CLOTHING + BODY)
+   ============================================================ */
+app.get("/avatar/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
-
-        const url = `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`;
+        const url = `https://avatar.roblox.com/v1/users/${userId}/avatar`;
 
         const response = await fetch(url, {
             method: "GET",
@@ -63,22 +62,51 @@ app.get("/wearing/:userId", async (req, res) => {
                 "Cookie": `.ROBLOSECURITY=${COOKIE}`,
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "Accept": "application/json",
-                "Referer": "https://www.roblox.com/",
-                "Origin": "https://www.roblox.com"
+                "Origin": "https://www.roblox.com",
+                "Referer": "https://www.roblox.com"
             }
         });
 
-        if (!response.ok) {
-            return res.json({ success: false, error: response.status });
-        }
+        if (!response.ok) return res.json({ success: false, error: response.status });
+
+        const data = await response.json();
+        res.json({ success: true, avatar: data });
+
+    } catch (err) {
+        res.json({ success: false, error: err.toString() });
+    }
+});
+
+/* ============================================================
+   3️⃣ /WEARING USES FULL AVATAR DATA (NEVER RETURNS [])
+   ============================================================ */
+app.get("/wearing/:userId", async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        // Fetch full avatar instead of "currently wearing"
+        const url = `https://avatar.roblox.com/v1/users/${userId}/avatar`;
+
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Cookie": `.ROBLOSECURITY=${COOKIE}`,
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json"
+            }
+        });
+
+        if (!response.ok) return res.json({ success: false, error: response.status });
 
         const data = await response.json();
 
-        // Standardize format
-        const wearing = (data.assets || []).map(asset => ({
-            id: asset.id,
-            name: asset.name,
-            image: asset.thumbnailUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${asset.id}&width=150&height=150&format=png`,
+        // avatar.accessories is the reliable list
+        const accessories = data.accessories || [];
+
+        const wearing = accessories.map(acc => ({
+            id: acc.assetId,
+            name: acc.name,
+            image: `https://www.roblox.com/asset-thumbnail/image?assetId=${acc.assetId}&width=150&height=150&format=png`,
             isLimited: false
         }));
 
@@ -89,13 +117,12 @@ app.get("/wearing/:userId", async (req, res) => {
     }
 });
 
-// ---------------------------
-// ASSET DETAILS — used by Roblox script to get names/images for offsale items
-// ---------------------------
+/* ============================================================
+   4️⃣ ASSET DETAILS — tells your game the true item name + offsale
+   ============================================================ */
 app.get("/details/:assetId", async (req, res) => {
     try {
         const assetId = req.params.assetId;
-
         const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
 
         const response = await fetch(url, {
@@ -103,30 +130,26 @@ app.get("/details/:assetId", async (req, res) => {
             headers: { "Cookie": `.ROBLOSECURITY=${COOKIE}` }
         });
 
-        if (!response.ok) {
-            return res.json({ success: false, error: response.status });
-        }
+        if (!response.ok) return res.json({ success: false, error: response.status });
 
         const details = await response.json();
-
-        return res.json({
-            success: true,
-            details
-        });
+        res.json({ success: true, details });
 
     } catch (err) {
-        return res.json({ success: false, error: err.toString() });
+        res.json({ success: false, error: err.toString() });
     }
 });
 
-// ---------------------------
-// Test route
-// ---------------------------
+/* ============================================================
+   TEST ROUTE
+   ============================================================ */
 app.get("/", (req, res) => {
     res.send("Roblox Inventory Proxy Running");
 });
 
-// Listener
+/* ============================================================
+   SERVER START
+   ============================================================ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Proxy running on port ${PORT}`);
