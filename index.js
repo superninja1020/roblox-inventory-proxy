@@ -51,9 +51,6 @@ app.get("/inventory/:userId", async (req, res) => {
     }
 });
 
-// -----------------------------------------
-// FIXED "CURRENTLY WEARING" ENDPOINT (2025)
-// -----------------------------------------
 app.get("/wearing/:userId", async (req, res) => {
     try {
         const userId = req.params.userId;
@@ -64,12 +61,10 @@ app.get("/wearing/:userId", async (req, res) => {
             method: "GET",
             headers: {
                 "Cookie": `.ROBLOSECURITY=${COOKIE}`,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "Accept": "application/json",
                 "Referer": "https://www.roblox.com/",
-                "Origin": "https://www.roblox.com",
-                "X-CSRF-TOKEN": "",
-                "Accept-Language": "en-US,en;q=0.9"
+                "Origin": "https://www.roblox.com"
             }
         });
 
@@ -78,20 +73,16 @@ app.get("/wearing/:userId", async (req, res) => {
         }
 
         const data = await response.json();
-        const assets = data.assets || [];
 
-        // Convert to the format your game expects
-        const formatted = assets.map(asset => ({
+        // Standardize format
+        const wearing = (data.assets || []).map(asset => ({
             id: asset.id,
-            name: asset.name || "Unknown",
-            image: asset.thumbnailUrl || "",
+            name: asset.name,
+            image: asset.thumbnailUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${asset.id}&width=150&height=150&format=png`,
             isLimited: false
         }));
 
-        return res.json({
-            success: true,
-            wearing: formatted
-        });
+        res.json({ success: true, wearing });
 
     } catch (err) {
         res.json({ success: false, error: err.toString() });
