@@ -145,6 +145,52 @@ app.get("/details/:assetId", async (req, res) => {
 });
 
 /* ============================================================
+   6️⃣ VALUES FOR WORN ASSET IDS (GAME SENDS IDS)
+   - Uses ONLY Roblox official collectibles inventory endpoint
+   - No rolimons, no roproxy in game
+   ============================================================ */
+
+app.post("/values", async (req, res) => {
+  try {
+    const { userId, assetIds } = req.body || {};
+    if (!userId || !Array.isArray(assetIds)) {
+      return res.status(400).json({ success: false, error: "Missing userId or assetIds[]" });
+    }
+
+    // fetch owned collectibles (your same logic)
+    const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Cookie: `.ROBLOSECURITY=${COOKIE}` },
+    });
+
+    if (!response.ok) return res.json({ success: false, error: response.status });
+
+    const data = await response.json();
+    const items = data.data || [];
+
+    const rapMap = new Map();
+    for (const it of items) {
+      rapMap.set(it.assetId, it.recentAveragePrice || 0);
+    }
+
+    let total = 0;
+    const perItem = {};
+
+    for (const id of assetIds) {
+      const n = Number(id);
+      const rap = rapMap.get(n) || 0;
+      perItem[n] = rap;
+      total += rap;
+    }
+
+    res.json({ success: true, total, perItem });
+  } catch (err) {
+    res.json({ success: false, error: err.toString() });
+  }
+});
+
+/* ============================================================
    TEST ROUTE
    ============================================================ */
 app.get("/", (req, res) => {
