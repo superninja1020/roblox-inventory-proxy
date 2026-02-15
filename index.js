@@ -27,7 +27,9 @@ const DETAILS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 let detailsQueue = Promise.resolve(); // serialize /details calls
 let lastDetailsFetchAt = 0;
-const MIN_DETAILS_GAP_MS = 350; // space economy calls
+
+// ✅ stronger spacing to avoid 429
+const MIN_DETAILS_GAP_MS = 800;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -64,8 +66,14 @@ async function fetchEconomyDetailsThrottled(assetId) {
 
       // rate limit
       if (resp.status === 429) {
+        console.log("[DETAILS] upstream 429 assetId=", assetId, "attempt=", attempt);
+
         const ra = resp.headers.get("retry-after");
-        const retryMs = ra ? Math.ceil(Number(ra) * 1000) : 1200 + attempt * 800;
+        // ✅ stronger backoff
+        const retryMs = ra
+          ? Math.ceil(Number(ra) * 1000)
+          : 2500 + attempt * 1500;
+
         await sleep(retryMs);
         continue;
       }
@@ -111,7 +119,7 @@ app.get("/inventory/:userId", async (req, res) => {
 });
 
 /* ============================================================
-   2️⃣ FULL AVATAR ENDPOINT (ACCESSORIES + CLOTHING + BODY)
+   2️⃣ FULL AVATAR ENDPOINT
    ============================================================ */
 app.get("/avatar/:userId", async (req, res) => {
   try {
@@ -139,8 +147,7 @@ app.get("/avatar/:userId", async (req, res) => {
 });
 
 /* ============================================================
-   3️⃣ /WEARING USES FULL AVATAR DATA (FIXED)
-   - The avatar endpoint returns `assets` (NOT `accessories`)
+   3️⃣ /WEARING (uses avatar endpoint)
    ============================================================ */
 app.get("/wearing/:userId", async (req, res) => {
   try {
@@ -161,8 +168,6 @@ app.get("/wearing/:userId", async (req, res) => {
     if (!response.ok) return res.json({ success: false, error: response.status });
 
     const data = await response.json();
-
-    // ✅ FIX: use `assets` (this is what this endpoint returns)
     const assets = data.assets || [];
 
     const wearing = assets.map((a) => ({
@@ -179,27 +184,34 @@ app.get("/wearing/:userId", async (req, res) => {
 });
 
 /* ============================================================
-   4️⃣ ASSET DETAILS — true item flags (offsale/limited/etc)
-   - NOW THROTTLED + CACHED TO AVOID 429
+   4️⃣ /DETAILS (THROTTLED + CACHED + LOGGED)
    ============================================================ */
 app.get("/details/:assetId", async (req, res) => {
   try {
     const assetId = String(req.params.assetId);
 
+    // ✅ proof logs (so you know which build is live)
+    console.log("[DETAILS] request assetId=", assetId);
+
     // cache hit
     const cached = detailsCache.get(assetId);
-    if (cached && Date.now() - cached.t < DETAILS_TTL_MS) {
+    if (cached && (Date.now() - cached.t) < DETAILS_TTL_MS) {
+      console.log("[DETAILS] cache HIT assetId=", assetId);
       return res.json({ success: true, details: cached.data, cached: true });
     }
+
+    console.log("[DETAILS] cache MISS assetId=", assetId);
 
     const result = await fetchEconomyDetailsThrottled(assetId);
 
     // if rate limited BUT we have stale cache, return it
     if (!result.ok && result.status === 429 && cached?.data) {
+      console.log("[DETAILS] serving STALE cache due to 429 assetId=", assetId);
       return res.json({ success: true, details: cached.data, cached: true, stale: true });
     }
 
     if (!result.ok) {
+      console.log("[DETAILS] FAILED assetId=", assetId, "status=", result.status);
       return res.json({ success: false, error: result.status });
     }
 
@@ -211,9 +223,7 @@ app.get("/details/:assetId", async (req, res) => {
 });
 
 /* ============================================================
-   6️⃣ VALUES FOR WORN ASSET IDS (GAME SENDS IDS)
-   - Uses ONLY Roblox official collectibles inventory endpoint
-   - No rolimons, no roproxy in game
+   6️⃣ /VALUES (unchanged)
    ============================================================ */
 app.post("/values", async (req, res) => {
   try {
@@ -222,7 +232,6 @@ app.post("/values", async (req, res) => {
       return res.status(400).json({ success: false, error: "Missing userId or assetIds[]" });
     }
 
-    // fetch owned collectibles
     const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
     const response = await fetch(url, {
       method: "GET",
