@@ -19,6 +19,68 @@ if (!COOKIE) {
 }
 
 /* ============================================================
+   DETAILS THROTTLE + CACHE (backend)
+   - prevents 429 spam from economy.roblox.com
+   ============================================================ */
+const detailsCache = new Map(); // assetId -> { t, data }
+const DETAILS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+let detailsQueue = Promise.resolve(); // serialize /details calls
+let lastDetailsFetchAt = 0;
+const MIN_DETAILS_GAP_MS = 350; // space economy calls
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchEconomyDetailsThrottled(assetId) {
+  // serialize all /details calls through one chain
+  detailsQueue = detailsQueue.then(async () => {
+    const now = Date.now();
+    const wait = MIN_DETAILS_GAP_MS - (now - lastDetailsFetchAt);
+    if (wait > 0) await sleep(wait);
+
+    // try up to 3 times on 429
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      lastDetailsFetchAt = Date.now();
+
+      const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
+      const resp = await fetch(url, {
+        method: "GET",
+        headers: {
+          Cookie: `.ROBLOSECURITY=${COOKIE}`,
+          "User-Agent": "Mozilla/5.0",
+          Accept: "application/json",
+          Origin: "https://www.roblox.com",
+          Referer: "https://www.roblox.com",
+        },
+      });
+
+      // success
+      if (resp.ok) {
+        const json = await resp.json();
+        return { ok: true, status: resp.status, json };
+      }
+
+      // rate limit
+      if (resp.status === 429) {
+        const ra = resp.headers.get("retry-after");
+        const retryMs = ra ? Math.ceil(Number(ra) * 1000) : 1200 + attempt * 800;
+        await sleep(retryMs);
+        continue;
+      }
+
+      // other errors
+      return { ok: false, status: resp.status, json: null };
+    }
+
+    return { ok: false, status: 429, json: null };
+  });
+
+  return detailsQueue;
+}
+
+/* ============================================================
    1️⃣ GET USER COLLECTIBLES (LIMITEDS)
    ============================================================ */
 app.get("/inventory/:userId", async (req, res) => {
@@ -117,30 +179,34 @@ app.get("/wearing/:userId", async (req, res) => {
 });
 
 /* ============================================================
-   4️⃣ ASSET DETAILS — tells your game the true item name + offsale
+   4️⃣ ASSET DETAILS — true item flags (offsale/limited/etc)
+   - NOW THROTTLED + CACHED TO AVOID 429
    ============================================================ */
 app.get("/details/:assetId", async (req, res) => {
   try {
-    const assetId = req.params.assetId;
-    const url = `https://economy.roblox.com/v2/assets/${assetId}/details`;
+    const assetId = String(req.params.assetId);
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Cookie: `.ROBLOSECURITY=${COOKIE}`,
-        "User-Agent": "Mozilla/5.0",
-        Accept: "application/json",
-        Origin: "https://www.roblox.com",
-        Referer: "https://www.roblox.com",
-      },
-    });
+    // cache hit
+    const cached = detailsCache.get(assetId);
+    if (cached && Date.now() - cached.t < DETAILS_TTL_MS) {
+      return res.json({ success: true, details: cached.data, cached: true });
+    }
 
-    if (!response.ok) return res.json({ success: false, error: response.status });
+    const result = await fetchEconomyDetailsThrottled(assetId);
 
-    const details = await response.json();
-    res.json({ success: true, details });
+    // if rate limited BUT we have stale cache, return it
+    if (!result.ok && result.status === 429 && cached?.data) {
+      return res.json({ success: true, details: cached.data, cached: true, stale: true });
+    }
+
+    if (!result.ok) {
+      return res.json({ success: false, error: result.status });
+    }
+
+    detailsCache.set(assetId, { t: Date.now(), data: result.json });
+    return res.json({ success: true, details: result.json });
   } catch (err) {
-    res.json({ success: false, error: err.toString() });
+    return res.json({ success: false, error: err.toString() });
   }
 });
 
@@ -149,7 +215,6 @@ app.get("/details/:assetId", async (req, res) => {
    - Uses ONLY Roblox official collectibles inventory endpoint
    - No rolimons, no roproxy in game
    ============================================================ */
-
 app.post("/values", async (req, res) => {
   try {
     const { userId, assetIds } = req.body || {};
@@ -157,7 +222,7 @@ app.post("/values", async (req, res) => {
       return res.status(400).json({ success: false, error: "Missing userId or assetIds[]" });
     }
 
-    // fetch owned collectibles (your same logic)
+    // fetch owned collectibles
     const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
     const response = await fetch(url, {
       method: "GET",
